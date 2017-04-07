@@ -1,0 +1,14 @@
+
+apply plugin: 'java'
+apply plugin: 'eclipse'
+
+dependencies {
+  compile 'com.amazonaws:aws-java-sdk:1.11.104'
+  compile 'com.google.guava:guava:21.0'
+  compile 'junit:junit:4.12'
+}
+
+repositories {
+  mavenCentral()
+}
+
