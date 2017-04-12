@@ -1,14 +1,108 @@
 
+buildscript {
+
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath "io.codearte.gradle.nexus:gradle-nexus-staging-plugin:0.5.3"
+    }
+}
+
+
+if (project.hasProperty('release')) {
+
+    subprojects {
+
+        task javadocJar(type: Jar) {
+            classifier = 'javadoc'
+            from javadoc
+        }
+
+        task sourcesJar(type: Jar) {
+            classifier = 'sources'
+            from sourceSets.main.allSource
+        }
+
+        artifacts {
+            archives javadocJar, sourcesJar
+        }
+    }
+
+    allprojects {
+        apply plugin: 'signing'
+        apply plugin: 'maven'
+
+        // Signature of artifacts
+        signing {
+            sign configurations.archives
+        }
+
+        // OSSRH publication
+        uploadArchives {
+            repositories {
+                mavenDeployer {
+                    // POM signature
+                    beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+                    // Target repository
+                    repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
+                        authentication(userName: ossrhUser, password: ossrhPassword)
+                    }
+                    pom.project {
+                        name project.name
+                        description project.description
+                        packaging 'jar'
+                        url 'https://github.com/amcconnell/dynamodb-lock'
+
+                        scm {
+                            connection 'scm:git:https://github.com/amcconnell/dynamodb-lock.git'
+                            developerConnection 'scm:git:git@github.com:amcconnell/dynamodb-lock.git'
+                            url 'https://github.com/amcconnell/dynamodb-lock.git'
+                        }
+
+                        licenses {
+                            license {
+                                name 'The MIT License (MIT)'
+                                url 'http://opensource.org/licenses/MIT'
+                                distribution 'repo'
+                            }
+                        }
+
+                        developers {
+                            developer {
+                                id = 'amcconnell'
+                                name = 'Andrew McConnell'
+                                email = 'andrew@mcconnellsoftware.com'
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+    }
+}
+
+
+repositories {
+    mavenCentral()
+}
+
+apply plugin: 'io.codearte.nexus-staging'
 apply plugin: 'java'
 apply plugin: 'eclipse'
 
 dependencies {
-  compile 'com.amazonaws:aws-java-sdk:1.11.104'
-  compile 'com.google.guava:guava:21.0'
-  compile 'junit:junit:4.12'
+    compile 'com.amazonaws:aws-java-sdk:1.11.104'
+    compile 'com.google.guava:guava:21.0'
+    testCompile 'junit:junit:4.12'
 }
 
-repositories {
-  mavenCentral()
+project.group = 'com.mcconnellsoftware.dynamodb-lock'
+project.version = '0.1-alpha-1'
+
+nexusStaging {
+    username = ossrhUser
+    password = ossrhPassword
 }
 
