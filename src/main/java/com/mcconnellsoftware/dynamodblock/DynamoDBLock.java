@@ -13,32 +13,97 @@ import com.google.common.collect.ImmutableMap;
 
 public class DynamoDBLock {
 
-    private static final int ACQUISITION_RESOLUTION = 100;
+    // Default values
+    private static final String DEFAULT_LOCK_TABLE = "DYNAMODB_LOCKS";
     private static final int DEFAULT_ACQUISITION_TIMEOUT = 10000;
     private static final int DEFAULT_LOCK_EXPIRATION = 60000;
+    private static final int DEFAULT_ACQUISITION_RESOLUTION = 100;
 
-    private static final String LOCK_TABLE = "DYNAMODB_LOCKS";
+    // Required fields
+    private AmazonDynamoDB client;
+    private String lockKey;
 
-    private final AmazonDynamoDB client;
-    private final String lockKey;
-    private final int acquisitionTimeout;
-    private final int lockExpiration;
-    private final UUID lockUUID;
+    // Optional fields
+    private String lockTable = DEFAULT_LOCK_TABLE;
+    private int acquisitionTimeout = DEFAULT_ACQUISITION_TIMEOUT;
+    private int lockExpiration = DEFAULT_LOCK_EXPIRATION;
+    private int acquisitionResolution = DEFAULT_ACQUISITION_RESOLUTION;
 
-    public DynamoDBLock(AmazonDynamoDB client, String lockKey, int acquisitionTimeout, int lockExpiration) {
-        this.client = client;
-        this.lockKey = lockKey;
-        this.acquisitionTimeout = acquisitionTimeout;
-        this.lockExpiration = lockExpiration;
-        lockUUID = UUID.randomUUID();
+    // Internal fields
+    private UUID lockUUID;
+
+    private DynamoDBLock() {
     }
 
-    public DynamoDBLock(AmazonDynamoDB client, String lockKey) {
-        this(client, lockKey, DEFAULT_ACQUISITION_TIMEOUT, DEFAULT_LOCK_EXPIRATION);
+    public static ILockKey amazonDynamoDB(AmazonDynamoDB client) {
+        return new DynamoDBLock.Builder(client);
     }
 
-    public DynamoDBLock(AmazonDynamoDB client, String lockKey, int acquisitionTimeout) {
-        this(client, lockKey, acquisitionTimeout, DEFAULT_LOCK_EXPIRATION);
+    public interface ILockKey {
+        IBuild lockKey(String lockKey);
+    }
+
+    public interface IBuild {
+
+        IBuild acquisitionTimeout(int acquisitionTimeout);
+
+        IBuild acquisitionResolution(int acquisitionResolution);
+
+        IBuild lockExpiration(int lockExpiration);
+
+        IBuild lockTable(String lockTable);
+
+        DynamoDBLock build();
+    }
+
+    /*
+     * Builder pattern is based on this blog post:
+     * http://blog.crisp.se/2013/10/09/perlundholm/another-builder-pattern-for-
+     * java
+     */
+    private static class Builder implements ILockKey, IBuild {
+
+        private final DynamoDBLock instance = new DynamoDBLock();
+
+        public Builder(AmazonDynamoDB client) {
+            instance.client = client;
+        }
+
+        @Override
+        public IBuild lockKey(String lockKey) {
+            instance.lockKey = lockKey;
+            return this;
+        }
+
+        @Override
+        public DynamoDBLock build() {
+            instance.lockUUID = UUID.randomUUID();
+            return instance;
+        }
+
+        @Override
+        public IBuild acquisitionTimeout(int acquisitionTimeout) {
+            instance.acquisitionTimeout = acquisitionTimeout;
+            return this;
+        }
+
+        @Override
+        public IBuild acquisitionResolution(int acquisitionResolution) {
+            instance.acquisitionResolution = acquisitionResolution;
+            return this;
+        }
+
+        @Override
+        public IBuild lockExpiration(int lockExpiration) {
+            instance.lockExpiration = lockExpiration;
+            return this;
+        }
+
+        @Override
+        public IBuild lockTable(String lockTable) {
+            instance.lockTable = lockTable;
+            return this;
+        }
     }
 
     /**
@@ -56,7 +121,8 @@ public class DynamoDBLock {
     }
 
     /**
-     * Acquire the lock. You can also use this to extend the expiration of the lock.
+     * Acquire the lock. You can also use this to extend the expiration of the
+     * lock.
      * 
      * @return true if lock is acquired, false otherwise
      * @throws InterruptedException
@@ -84,6 +150,8 @@ public class DynamoDBLock {
 
     protected synchronized boolean acquire(AmazonDynamoDB client) throws InterruptedException {
 
+        boolean acquired = false;
+
         int timeout = acquisitionTimeout;
 
         while (timeout >= 0) {
@@ -103,31 +171,34 @@ public class DynamoDBLock {
                 expressionAttributeValues.put(":now",
                         new AttributeValue().withN(String.valueOf(System.currentTimeMillis())));
 
-                PutItemRequest putItemRequest = new PutItemRequest().withTableName(LOCK_TABLE)
+                PutItemRequest putItemRequest = new PutItemRequest().withTableName(lockTable)
                         .withItem(new ImmutableMap.Builder<String, AttributeValue>()
                                 .put("lock_path", new AttributeValue().withS(lockKey))
                                 .put("lock_expiration", new AttributeValue().withN(Long.toString(expirationTime)))
-                                .put("lock_ttl", new AttributeValue().withN(Long.toString((expirationTime/1000)+1)))
+                                .put("lock_ttl", new AttributeValue().withN(Long.toString((expirationTime / 1000) + 1)))
                                 .put("lock_owner", new AttributeValue().withS(lockUUID.toString())).build())
                         .withConditionExpression(
                                 "attribute_not_exists(lock_path) OR (lock_owner <> :owner AND lock_expiration <= :now) OR (lock_owner = :owner AND lock_expiration > :now)")
                         .withExpressionAttributeValues(expressionAttributeValues);
 
                 client.putItem(putItemRequest);
-                return true;
+                acquired = true;
+                break;
             } catch (ConditionalCheckFailedException e) {
             }
 
-            timeout -= ACQUISITION_RESOLUTION;
-            Thread.sleep(ACQUISITION_RESOLUTION);
+            timeout -= acquisitionResolution;
+            Thread.sleep(acquisitionResolution);
 
         }
 
-        return false;
+        return acquired;
 
     }
 
     protected synchronized boolean renew(AmazonDynamoDB client) throws InterruptedException {
+
+        boolean renewed = false;
 
         final long expirationTime = System.currentTimeMillis() + lockExpiration;
 
@@ -136,8 +207,10 @@ public class DynamoDBLock {
         // 1. There is an existing lock for this key AND
         // 2. We are the lock owner and the lock hasn't expired
         //
-        // Developer Note: It is reasonable to ask if we should allow an *expired* lock to be renewed as long
-        // as the previous owner is the one requesting the renewal. For now, that is disallowed.
+        // Developer Note: It is reasonable to ask if we should allow an
+        // *expired* lock to be renewed as long
+        // as the previous owner is the one requesting the renewal. For now,
+        // that is disallowed.
         //
         try {
 
@@ -145,21 +218,22 @@ public class DynamoDBLock {
             expressionAttributeValues.put(":owner", new AttributeValue().withS(lockUUID.toString()));
             expressionAttributeValues.put(":now",
                     new AttributeValue().withN(String.valueOf(System.currentTimeMillis())));
-            PutItemRequest putItemRequest = new PutItemRequest().withTableName(LOCK_TABLE)
+            PutItemRequest putItemRequest = new PutItemRequest().withTableName(lockTable)
                     .withItem(new ImmutableMap.Builder<String, AttributeValue>()
                             .put("lock_path", new AttributeValue().withS(lockKey))
                             .put("lock_expiration", new AttributeValue().withN(Long.toString(expirationTime)))
-                            .put("lock_ttl", new AttributeValue().withN(Long.toString((expirationTime/1000)+1)))
+                            .put("lock_ttl", new AttributeValue().withN(Long.toString((expirationTime / 1000) + 1)))
                             .put("lock_owner", new AttributeValue().withS(lockUUID.toString())).build())
-                    .withConditionExpression("attribute_exists(lock_path) AND lock_owner = :owner AND lock_expiration > :now")
+                    .withConditionExpression(
+                            "attribute_exists(lock_path) AND lock_owner = :owner AND lock_expiration > :now")
                     .withExpressionAttributeValues(expressionAttributeValues);
 
             client.putItem(putItemRequest);
-            return true;
+            renewed = true;
         } catch (ConditionalCheckFailedException e) {
         }
 
-        return false;
+        return renewed;
 
     }
 
@@ -170,7 +244,7 @@ public class DynamoDBLock {
 
             Map<String, AttributeValue> keys = new HashMap<>();
             keys.put("lock_path", new AttributeValue(lockKey));
-            DeleteItemRequest deleteItemRequest = new DeleteItemRequest().withTableName(LOCK_TABLE).withKey(keys)
+            DeleteItemRequest deleteItemRequest = new DeleteItemRequest().withTableName(lockTable).withKey(keys)
                     .withConditionExpression("lock_owner = :owner")
                     .withExpressionAttributeValues(expressionAttributeValues);
             client.deleteItem(deleteItemRequest);
