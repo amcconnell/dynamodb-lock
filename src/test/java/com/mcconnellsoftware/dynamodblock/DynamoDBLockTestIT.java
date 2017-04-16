@@ -22,15 +22,15 @@ public class DynamoDBLockTestIT {
 
         AmazonDynamoDB client = AmazonDynamoDBClientBuilder.defaultClient();
 
-        DynamoDBLock lock = new DynamoDBLock(client, "testlock");
+        DynamoDBLock lock = DynamoDBLock.amazonDynamoDB(client).lockKey("testLock").build();
         assertTrue(lock.acquire());
 
-        DynamoDBLock lock2 = new DynamoDBLock(client, "testlock", 1000);
+        DynamoDBLock lock2 = DynamoDBLock.amazonDynamoDB(client).lockKey("testLock").acquisitionTimeout(1000).build();
         assertFalse(lock2.acquire());
 
         lock.release();
 
-        lock2 = new DynamoDBLock(client, "testlock", 1000);
+        lock2 = DynamoDBLock.amazonDynamoDB(client).lockKey("testLock").acquisitionTimeout(1000).build();
         assertTrue(lock2.acquire());
         lock2.release();
     }
@@ -40,7 +40,7 @@ public class DynamoDBLockTestIT {
 
         AmazonDynamoDB client = AmazonDynamoDBClientBuilder.defaultClient();
 
-        DynamoDBLock lock = new DynamoDBLock(client, "testrenew");
+        DynamoDBLock lock = DynamoDBLock.amazonDynamoDB(client).lockKey("testrenew").build();
         assertTrue(lock.acquire());
 
         Thread.sleep(2000l);
@@ -49,7 +49,7 @@ public class DynamoDBLockTestIT {
 
         lock.release();
 
-        DynamoDBLock lock2 = new DynamoDBLock(client, "testrenew", 1000);
+        DynamoDBLock lock2 = DynamoDBLock.amazonDynamoDB(client).lockKey("testrenew").acquisitionTimeout(1000).build();
         assertTrue(lock2.acquire());
         lock2.release();
     }
@@ -59,7 +59,8 @@ public class DynamoDBLockTestIT {
 
         AmazonDynamoDB client = AmazonDynamoDBClientBuilder.defaultClient();
 
-        DynamoDBLock lock = new DynamoDBLock(client, "testrenewexp",15000,2000);
+        DynamoDBLock lock = DynamoDBLock.amazonDynamoDB(client).lockKey("testrenewexp").acquisitionTimeout(15000)
+                .lockExpiration(2000).build();
         assertTrue(lock.acquire());
 
         Thread.sleep(3000l);
@@ -69,17 +70,18 @@ public class DynamoDBLockTestIT {
         lock.release();
 
     }
-    
+
     @Test
     public void testReleaseWithoutLock() throws InterruptedException {
 
         AmazonDynamoDB client = AmazonDynamoDBClientBuilder.defaultClient();
 
-        DynamoDBLock lock = new DynamoDBLock(client, "releasenolock",15000,2000);
+        DynamoDBLock lock = DynamoDBLock.amazonDynamoDB(client).lockKey("releasenolock").acquisitionTimeout(15000)
+                .lockExpiration(2000).build();
         lock.release();
 
     }
-    
+
     @Test
     public void testConcurrency() throws InterruptedException {
         final int count = 10;
@@ -114,7 +116,8 @@ public class DynamoDBLockTestIT {
             AmazonDynamoDB client = AmazonDynamoDBClientBuilder.defaultClient();
             try {
                 for (int i = 0; i < times; i++) {
-                    DynamoDBLock lock = new DynamoDBLock(client, "testlock", 15000, 200);
+                    DynamoDBLock lock = DynamoDBLock.amazonDynamoDB(client).lockKey("testlock")
+                            .acquisitionTimeout(15000).lockExpiration(200).build();
                     try {
                         if (lock.acquire()) {
                             counter++;
