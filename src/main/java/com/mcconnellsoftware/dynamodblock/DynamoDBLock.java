@@ -125,7 +125,7 @@ public class DynamoDBLock {
      * lock.
      * 
      * @return true if lock is acquired, false otherwise
-     * @throws InterruptedException
+     * @throws InterruptedException if the operation is interrupted
      */
     public synchronized boolean acquire() throws InterruptedException {
         return acquire(client);
@@ -135,7 +135,7 @@ public class DynamoDBLock {
      * Renew the lock. An expired lock may not be renewed.
      * 
      * @return true if lock is acquired, false otherwise
-     * @throws InterruptedException
+     * @throws InterruptedException if the operation is interrupted
      */
     public synchronized boolean renew() throws InterruptedException {
         return renew(client);
