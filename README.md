@@ -7,9 +7,43 @@ dynamodb-lock is a distributed locking implementation built upon AWS DynamoDB.
 
 ### Usage
 
-First, you will need to create a single table in DynamoDB (the default table name is DYNAMODB_LOCKS). It should have a partition key named "lock_path". You may also want to specify a TTL field named "lock_ttl" set to a period that exceeds the longest period of time that you expect an application to hold a lock.
+First, you will need to create a single table in DynamoDB (the default table name is DYNAMODB_LOCKS). It should have a partition key named "lock_path". 
 
-[TBD - example code]
+You may also want to specify a TTL field named "lock_ttl" to DynamoDB to automatically clean up references to any locks that are never explicity released (such as might happen if an application crashes).
+
+The Cloudformation template snippet for this looks as follows:
+
+~~~~
+{
+  "Type" : "AWS::DynamoDB::Table",
+  "Properties" : {
+    "AttributeDefinitions" : [ {""} ],
+    "KeySchema" : [ KeySchema, ... ],
+    "TableName" : "DYNAMODB_LOCKS",
+    "TimeToLiveSpecification" : {
+      "AttributeName" : "lock_ttl",
+      "Enabled" : "true"
+    }
+  }
+}
+~~~~
+
+A basic example of using the dynamodb lock:
+
+~~~~
+AmazonDynamoDB client = AmazonDynamoDBClientBuilder.defaultClient();
+
+DynamoDBLock lock = DynamoDBLock.amazonDynamoDB(client).lockKey("myLock").build();
+
+try {
+  if (lock.acquire()) {
+    // Perform critical operations
+  }
+} finally {
+  lock.release();
+}
+~~~~
+
 
 ### Requirements
 
