@@ -31,16 +31,29 @@ The Cloudformation template snippet for this looks as follows:
 A basic example of using the dynamodb lock:
 
 ~~~~
-AmazonDynamoDB client = AmazonDynamoDBClientBuilder.defaultClient();
+import com.mcconnellsoftware.dynamodblock.DynamoDBLock;
+import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder;
+import com.amazonaws.services.dynamodbv2.AmazonDynamoDB;
 
-DynamoDBLock lock = DynamoDBLock.amazonDynamoDB(client).lockKey("myLock").build();
+public class Main {
+  
+  
+  public static void main(String[] args) {
+    
+    AmazonDynamoDB client = AmazonDynamoDBClientBuilder.defaultClient();
 
-try {
-  if (lock.acquire()) {
-    // Perform critical operations
+    DynamoDBLock lock = DynamoDBLock.amazonDynamoDB(client).lockKey("myLock").build();
+
+    try {
+      if (lock.acquire()) {
+        // Perform critical operations
+      }
+    } catch (InterruptedException ie) {
+      ie.printStackTrace(System.err);
+    } finally {
+      lock.release();
+    }  
   }
-} finally {
-  lock.release();
 }
 ~~~~
 
